@@ -6,19 +6,18 @@ extern crate alloc;
 use alloc::format;
 use alloc::string::ToString;
 use alloc_cortex_m::CortexMHeap;
-use bbr as _;
-use fugit::{Duration, Instant};
+use bbr::{self as _, songs::get_tune};
+use embedded_hal::digital::v2::OutputPin;
 // use bbr::ultrasonic;
 use core::ops::{Div, Mul};
 // global logger + panicking-behavior + memory layout
 use hd44780_driver::{Cursor, CursorBlink, Display, DisplayMode, HD44780};
 use keypad2::Keypad;
 use stm32f4xx_hal::{
-    adc::config::TriggerMode,
     gpio::{Edge, Input, Output, Pin, Pull, PushPull},
     pac::{self, TIM1},
     prelude::*,
-    timer::{Delay, Timer},
+    timer::{Channel, Delay, Timer},
 };
 
 #[global_allocator]
@@ -56,25 +55,32 @@ fn init_allocator() {
 // D6 / PB10 (R2)
 
 // Buzzer connection:
-// D13 / PA12
+// unlabeled / PA13
 
 // Ultrasonic sensor:
 // trigger: D14 / PB8
 // echo: D15 / PB9
 
-struct UltrasonicSensor {
-    trigger: Pin<'B', 9, Output<PushPull>>,
+struct UltrasonicSensor<Trigger>
+where
+    Trigger: OutputPin,
+{
+    trigger: Trigger,
     echo: Pin<'B', 8, Input>,
 }
 
 pub type GenericDelay = Delay<TIM1, 1000000>;
 
-fn read_ultrasonic(sensor: &mut UltrasonicSensor, delay: &mut GenericDelay) -> Option<f64> {
+fn read_ultrasonic<T: OutputPin>(
+    sensor: &mut UltrasonicSensor<T>,
+    delay: &mut GenericDelay,
+) -> Option<f64> {
     sensor.trigger.set_high();
     delay.delay_us(10u16);
     sensor.trigger.set_low();
 
     let mut counter = 0;
+
     // defmt::info!("Distance: {}", counter);
     while !sensor.echo.is_high() {
         counter += 1;
@@ -104,16 +110,14 @@ fn read_ultrasonic(sensor: &mut UltrasonicSensor, delay: &mut GenericDelay) -> O
 #[cortex_m_rt::entry]
 fn main() -> ! {
     init_allocator();
-    let mut cp = cortex_m::Peripherals::take().unwrap();
+    let cp = cortex_m::Peripherals::take().unwrap();
     let dp = pac::Peripherals::take().unwrap();
     let rcc = dp.RCC.constrain();
-    let clocks = rcc.cfgr.freeze();
-    let mut delay = dp.TIM1.delay_us(&clocks);
+    let clocks = rcc.cfgr.sysclk(48.MHz()).freeze();
+    let mut delay = cp.SYST.delay(&clocks);
     let gpiob = dp.GPIOB.split();
     let gpioa = dp.GPIOA.split();
     let gpioc = dp.GPIOC.split();
-
-    let counter = Timer::syst(cp.SYST, &clocks).counter_us();
 
     // let rows = (
     //     gpioa.pa2.into_pull_up_input(),
@@ -174,40 +178,68 @@ fn main() -> ! {
         echo: gpiob.pb8.into_floating_input(),
     };
 
-    let mut buffer = [0; 4];
     defmt::info!("Connected to target!");
 
-    let mut is_green_on = false;
+    let buzzer = gpioa.pa15.into_alternate();
+    let mut buzz_pwm = dp.TIM2.pwm_hz(buzzer, 2000.Hz(), &clocks);
+    let max_duty = buzz_pwm.get_max_duty();
     red_led.set_high();
-    let mut counter = 0;
-    loop {
-        let key = keypad.read_char(&mut delay);
-        let distance = read_ultrasonic(&mut ultrasonic, &mut delay);
-        lcd.clear(&mut delay);
-        lcd.write_str(&*format!("{:?}", distance), &mut delay)
-            .unwrap();
-        // if let Some(val) = distance {
-        //     // defmt::info!("New value: {}", val);
-        //     lcd.write_str(&*val.to_string(), &mut delay).unwrap();
-        //     delay.delay_ms(1000u16);
-        // }
-        // lcd.clear(&mut delay);
-        // lcd.write_str(&*format!("{:?}", distance), &mut delay).unwrap();
-        if key != ' ' {
-            // lcd.write_str(key.encode_utf8(&mut buffer), &mut delay).unwrap();
+    buzz_pwm.set_duty(Channel::C1, max_duty / 2);
+    green_led.set_high();
 
-            if is_green_on && counter == 9 {
-                green_led.set_low();
-                red_led.set_high();
-                is_green_on = false;
-            } else if counter == 9 {
-                green_led.set_high();
-                red_led.set_low();
-                is_green_on = true;
+    red_led.set_high();
+
+    let song = get_tune();
+
+    let tempo = 60_u32;
+
+    loop {
+        // 1. Obtain a note in the tune
+        for (freq, duration) in song.iter() {
+            if let Some(freq) = freq {
+                buzz_pwm.set_period(*freq);
+                buzz_pwm.enable(Channel::C1);
+                delay.delay_ms(duration * tempo);
+            } else {
+                buzz_pwm.disable(Channel::C1);
+                delay.delay_ms(duration * tempo);
             }
+
+            buzz_pwm.disable(Channel::C1);
+            // 4.2 Keep the output off for half a beat between notes
+            delay.delay_ms(tempo / 2);
         }
-        delay.delay_ms(10u16);
-        counter += 1;
-        counter = counter % 10;
+        delay.delay_ms(1000u16);
     }
+
+    // loop {
+    //     let key = keypad.read_char(&mut delay);
+    //     let distance = read_ultrasonic(&mut ultrasonic, &mut delay);
+    //     lcd.clear(&mut delay);
+    //     lcd.write_str(&*format!("{:?}", distance), &mut delay)
+    //         .unwrap();
+    //     // if let Some(val) = distance {
+    //     //     // defmt::info!("New value: {}", val);
+    //     //     lcd.write_str(&*val.to_string(), &mut delay).unwrap();
+    //     //     delay.delay_ms(1000u16);
+    //     // }
+    //     // lcd.clear(&mut delay);
+    //     // lcd.write_str(&*format!("{:?}", distance), &mut delay).unwrap();
+    //     if key != ' ' {
+    //         // lcd.write_str(key.encode_utf8(&mut buffer), &mut delay).unwrap();
+
+    //         if is_green_on && counter == 9 {
+    //             green_led.set_low();
+    //             red_led.set_high();
+    //             is_green_on = false;
+    //         } else if counter == 9 {
+    //             green_led.set_high();
+    //             red_led.set_low();
+    //             is_green_on = true;
+    //         }
+    //     }
+    //     delay.delay_ms(10u16);
+    //     counter += 1;
+    //     counter = counter % 10;
+    // }
 }

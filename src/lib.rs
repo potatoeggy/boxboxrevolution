@@ -6,7 +6,8 @@ use cortex_m_semihosting::debug;
 
 use defmt_rtt as _; // global logger
 
-use stm32f4xx_hal::{pac, prelude::*};
+pub mod game;
+pub mod songs;
 
 use panic_probe as _;
 
