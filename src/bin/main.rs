@@ -6,7 +6,13 @@ extern crate alloc;
 use alloc::format;
 use alloc::string::ToString;
 use alloc_cortex_m::CortexMHeap;
-use bbr::{self as _, songs::get_tune};
+use bbr::{
+    self as _,
+    game::rhythm::{RhythmGame, Song},
+    lcd_helper::LCD,
+    songs::get_tune,
+};
+use cortex_m::peripheral::SYST;
 use embedded_hal::digital::v2::OutputPin;
 // use bbr::ultrasonic;
 use core::ops::{Div, Mul};
@@ -15,9 +21,9 @@ use hd44780_driver::{Cursor, CursorBlink, Display, DisplayMode, HD44780};
 use keypad2::Keypad;
 use stm32f4xx_hal::{
     gpio::{Edge, Input, Output, Pin, Pull, PushPull},
-    pac::{self, TIM1},
+    pac::{self, TIM1, TIM2},
     prelude::*,
-    timer::{Channel, Delay, Timer},
+    timer::{Channel, Delay, SysDelay, Timer},
 };
 
 #[global_allocator]
@@ -39,7 +45,7 @@ fn init_allocator() {
 // E:   D10 / PB6
 // D4:  D11 / PA7
 // D5:  D12 / PA6
-// D6:  D8 / PA9
+// D6:  A2 / PA4
 // D7:  D7 / PA8
 // BLA:   5V
 // BLK:   GND
@@ -55,7 +61,7 @@ fn init_allocator() {
 // D6 / PB10 (R2)
 
 // Buzzer connection:
-// unlabeled / PA13
+// D8 / PA9
 
 // Ultrasonic sensor:
 // trigger: D14 / PB8
@@ -69,11 +75,9 @@ where
     echo: Pin<'B', 8, Input>,
 }
 
-pub type GenericDelay = Delay<TIM1, 1000000>;
-
 fn read_ultrasonic<T: OutputPin>(
     sensor: &mut UltrasonicSensor<T>,
-    delay: &mut GenericDelay,
+    delay: &mut SysDelay,
 ) -> Option<f64> {
     sensor.trigger.set_high();
     delay.delay_us(10u16);
@@ -150,8 +154,11 @@ fn main() -> ! {
     let en = gpiob.pb6.into_push_pull_output();
     let d4 = gpioa.pa7.into_push_pull_output();
     let d5 = gpioa.pa6.into_push_pull_output();
-    let d6 = gpioa.pa9.into_push_pull_output();
+    let d6 = gpioa.pa4.into_push_pull_output();
     let d7 = gpioa.pa8.into_push_pull_output();
+
+    // pa13 nukes the board
+    // pa15 dies halfway through
 
     let mut keypad = Keypad::new(rows, cols);
     let mut lcd = HD44780::new_4bit(rs, en, d4, d5, d6, d7, &mut delay).unwrap();
@@ -170,6 +177,8 @@ fn main() -> ! {
     lcd.set_cursor_pos(40, &mut delay).unwrap();
     lcd.write_str("Num2", &mut delay).unwrap();
 
+    let mut lcd_driver = LCD::new(lcd, &mut delay);
+
     let mut led = gpioa.pa5.into_push_pull_output();
     let mut echo = gpioc.pc6.into_pull_down_input();
 
@@ -180,36 +189,60 @@ fn main() -> ! {
 
     defmt::info!("Connected to target!");
 
-    let buzzer = gpioa.pa15.into_alternate();
-    let mut buzz_pwm = dp.TIM2.pwm_hz(buzzer, 2000.Hz(), &clocks);
+    let buzzer = gpioa.pa9.into_alternate();
+    let mut buzz_pwm = dp.TIM1.pwm_hz(buzzer, 2000.Hz(), &clocks);
     let max_duty = buzz_pwm.get_max_duty();
     red_led.set_high();
-    buzz_pwm.set_duty(Channel::C1, max_duty / 2);
+    buzz_pwm.set_duty(Channel::C2, max_duty / 2);
     green_led.set_high();
 
     red_led.set_high();
 
-    let song = get_tune();
+    let song = Song::new(45, get_tune());
+    let mut game = RhythmGame::new(&song);
 
-    let tempo = 60_u32;
+    let tempo: u32 = 60;
+
+    let TICK_RATE = 120;
+    let tick_pause: u32 = 1_000_000 / TICK_RATE - 100;
+    let mut current_tick = 0;
 
     loop {
-        // 1. Obtain a note in the tune
-        for (freq, duration) in song.iter() {
-            if let Some(freq) = freq {
-                buzz_pwm.set_period(*freq);
-                buzz_pwm.enable(Channel::C1);
-                delay.delay_ms(duration * tempo);
-            } else {
-                buzz_pwm.disable(Channel::C1);
-                delay.delay_ms(duration * tempo);
-            }
-
-            buzz_pwm.disable(Channel::C1);
-            // 4.2 Keep the output off for half a beat between notes
-            delay.delay_ms(tempo / 2);
+        if current_tick % game.tick_period() == 0 {
+            game.poll();
         }
-        delay.delay_ms(1000u16);
+
+        if current_tick == 1 {
+            let distance = read_ultrasonic(&mut ultrasonic, &mut delay);
+            lcd_driver.print_rhythm_game(&game, tick_pause, &mut delay);
+
+            // lcd.clear(&mut delay);
+            // lcd.write_str(&*format!("{:?}", distance), &mut delay)
+            //     .unwrap();
+        }
+        // for (freq, duration) in song.iter() {
+        //     lcd.clear(&mut delay).unwrap();
+        //     if let Some(freq) = freq {
+        //         lcd.write_str(&*format!("{:?}", freq.raw()), &mut delay)
+        //             .unwrap();
+        //         buzz_pwm.set_period(*freq);
+        //         green_led.set_high();
+        //         buzz_pwm.enable(Channel::C2);
+        //         delay.delay_ms(duration * tempo);
+        //     } else {
+        //         red_led.set_high();
+        //         buzz_pwm.disable(Channel::C2);
+        //         delay.delay_ms(duration * tempo);
+        //     }
+        //     green_led.set_low();
+        //     red_led.set_low();
+
+        //     buzz_pwm.disable(Channel::C2);
+        //     // 4.2 Keep the output off for half a beat between notes
+        //     delay.delay_ms(tempo);
+        // }
+        current_tick = (current_tick + 1) % TICK_RATE;
+        delay.delay_us(tick_pause);
     }
 
     // loop {
