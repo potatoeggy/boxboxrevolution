@@ -76,24 +76,18 @@ fn read_ultrasonic(sensor: &mut UltrasonicSensor, delay: &mut GenericDelay) -> O
 
     let mut counter = 0;
     // defmt::info!("Distance: {}", counter);
-    while sensor.echo.is_low() {
+    while !sensor.echo.is_high() {
         counter += 1;
         delay.delay_us(1u32);
         if counter > 100000 {
-<<<<<<< Updated upstream
             // it means that we are not getting a response
-=======
->>>>>>> Stashed changes
             return Some(-1.0);
         }
     }
 
     let mut counter = 0;
-    while sensor.echo.is_high() {
-<<<<<<< Updated upstream
-=======
+    while !sensor.echo.is_low() {
         delay.delay_us(1u16);
->>>>>>> Stashed changes
         counter += 1;
         delay.delay_us(1u32);
         if counter > 100000 {
@@ -102,7 +96,7 @@ fn read_ultrasonic(sensor: &mut UltrasonicSensor, delay: &mut GenericDelay) -> O
     }
     let result: f64 = f64::mul(
         counter.into(),
-        f64::div(f64::div(f64::mul(1000.0, 343.0), 4.0), 1000000.0),
+        f64::div(f64::div(f64::mul(1000.0, 343.0), 2.0), 1000000.0),
     );
     Some(result)
 }
@@ -176,13 +170,8 @@ fn main() -> ! {
     let mut echo = gpioc.pc6.into_pull_down_input();
 
     let mut ultrasonic = UltrasonicSensor {
-<<<<<<< Updated upstream
-        trigger: gpioc.pc5.into_push_pull_output(),
-        echo: echo,
-=======
         trigger: gpiob.pb9.into_push_pull_output(),
         echo: gpiob.pb8.into_floating_input(),
->>>>>>> Stashed changes
     };
 
     let mut buffer = [0; 4];
