@@ -3,6 +3,7 @@
 
 extern crate alloc;
 
+use alloc::format;
 use alloc::string::ToString;
 use alloc_cortex_m::CortexMHeap;
 use bbr as _;
@@ -58,12 +59,12 @@ fn init_allocator() {
 // D13 / PA12
 
 // Ultrasonic sensor:
-// trigger: D14 / PC5
-// echo: D15 / PC6
+// trigger: D14 / PB8
+// echo: D15 / PB9
 
 struct UltrasonicSensor {
-    trigger: Pin<'C', 5, Output<PushPull>>,
-    echo: Pin<'C', 6, Input>,
+    trigger: Pin<'B', 9, Output<PushPull>>,
+    echo: Pin<'B', 8, Input>,
 }
 
 pub type GenericDelay = Delay<TIM1, 1000000>;
@@ -79,20 +80,30 @@ fn read_ultrasonic(sensor: &mut UltrasonicSensor, delay: &mut GenericDelay) -> O
         counter += 1;
         delay.delay_us(1u32);
         if counter > 100000 {
+<<<<<<< Updated upstream
             // it means that we are not getting a response
+=======
+>>>>>>> Stashed changes
             return Some(-1.0);
         }
     }
 
     let mut counter = 0;
     while sensor.echo.is_high() {
+<<<<<<< Updated upstream
+=======
+        delay.delay_us(1u16);
+>>>>>>> Stashed changes
         counter += 1;
         delay.delay_us(1u32);
         if counter > 100000 {
             return Some(-2.0);
         }
     }
-    let result: f64 = f64::mul(counter.into(), f64::div(f64::mul(1_000_000.0, 331.8), 2.0));
+    let result: f64 = f64::mul(
+        counter.into(),
+        f64::div(f64::div(f64::mul(1000.0, 343.0), 4.0), 1000000.0),
+    );
     Some(result)
 }
 
@@ -165,8 +176,13 @@ fn main() -> ! {
     let mut echo = gpioc.pc6.into_pull_down_input();
 
     let mut ultrasonic = UltrasonicSensor {
+<<<<<<< Updated upstream
         trigger: gpioc.pc5.into_push_pull_output(),
         echo: echo,
+=======
+        trigger: gpiob.pb9.into_push_pull_output(),
+        echo: gpiob.pb8.into_floating_input(),
+>>>>>>> Stashed changes
     };
 
     let mut buffer = [0; 4];
@@ -178,12 +194,15 @@ fn main() -> ! {
     loop {
         let key = keypad.read_char(&mut delay);
         let distance = read_ultrasonic(&mut ultrasonic, &mut delay);
-        if let Some(val) = distance {
-            // defmt::info!("New value: {}", val);
-            lcd.write_str(&*val.to_string(), &mut delay).unwrap();
-            delay.delay_ms(1000u16);
-        }
         lcd.clear(&mut delay);
+        lcd.write_str(&*format!("{:?}", distance), &mut delay)
+            .unwrap();
+        // if let Some(val) = distance {
+        //     // defmt::info!("New value: {}", val);
+        //     lcd.write_str(&*val.to_string(), &mut delay).unwrap();
+        //     delay.delay_ms(1000u16);
+        // }
+        // lcd.clear(&mut delay);
         // lcd.write_str(&*format!("{:?}", distance), &mut delay).unwrap();
         if key != ' ' {
             // lcd.write_str(key.encode_utf8(&mut buffer), &mut delay).unwrap();
