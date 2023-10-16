@@ -13,30 +13,30 @@ impl GameScreenStage for ScreenTally {}
 pub struct GameState {}
 
 pub struct Game<S: GameScreenStage> {
-    stage: S,
+    _stage: S,
     pub state: Box<GameState>,
 }
 
 impl Game<ScreenSelect> {
-    fn new() -> Self {
+    pub fn new() -> Self {
         Game {
-            stage: ScreenSelect,
+            _stage: ScreenSelect,
             state: Box::new(GameState {}),
         }
     }
 
-    fn to_playing(self) -> Game<ScreenPlaying> {
+    pub fn to_playing(self) -> Game<ScreenPlaying> {
         Game {
-            stage: ScreenPlaying,
+            _stage: ScreenPlaying,
             state: self.state,
         }
     }
 }
 
 impl Game<ScreenPlaying> {
-    fn to_paused(self) -> Game<ScreenPaused> {
+    pub fn to_paused(self) -> Game<ScreenPaused> {
         Game {
-            stage: ScreenPaused,
+            _stage: ScreenPaused,
             state: self.state,
         }
     }

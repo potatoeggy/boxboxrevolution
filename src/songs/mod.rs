@@ -1,7 +1,4 @@
-use alloc::{
-    string::{String, ToString},
-    vec::Vec,
-};
+use alloc::vec::Vec;
 use fugit::Rate;
 use stm32f4xx_hal::prelude::*;
 
@@ -35,7 +32,7 @@ pub fn tone_string_to_hz(tone: &str) -> Option<Rate<u32, 1, 1>> {
 }
 
 pub fn get_tune() -> Vec<(Option<Rate<u32, 1, 1>>, u32)> {
-    let megalovania = [
+    let _megalovania = [
         (" ", 8),
         ("d", 1),
         ("d", 1),

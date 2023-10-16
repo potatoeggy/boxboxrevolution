@@ -1,9 +1,6 @@
-use alloc::{string::String, vec::Vec};
-use core::ops::{Div, Mul};
-use hd44780_driver::{
-    bus::{DataBus, FourBitBus},
-    Cursor, CursorBlink, Display, DisplayMode, HD44780,
-};
+use alloc::string::String;
+
+use hd44780_driver::{bus::FourBitBus, Cursor, CursorBlink, Display, DisplayMode, HD44780};
 use stm32f4xx_hal::{
     gpio::{Output, Pin},
     timer::SysDelay,
@@ -51,7 +48,7 @@ impl LCD {
     pub fn print_rhythm_game(
         &mut self,
         rhythm: &RhythmGame,
-        game_tick_period: u32,
+        _game_tick_period: u32,
         delay: &mut SysDelay,
     ) {
         // we want the upcoming n notes that are on the screen
@@ -68,24 +65,8 @@ impl LCD {
             }
         }
 
-        // for (_, ticks_left) in notes.iter() {
-        //     let position_before_boom = u32::div(
-        //         u32::mul(
-        //             u32::mul(*ticks_left, rhythm.tick_period()),
-        //             game_tick_period,
-        //         )
-        //         .into(),
-        //         100,
-        //     );
-
-        //     if position_before_boom < DISPLAY_LENGTH.into() {
-        //         shown_notes[position_before_boom as usize] = NOTE_CHARACTER;
-        //     }
-        // }
         let shown_string: String = shown_notes.iter().collect();
         self.driver.clear(delay).unwrap();
-        // let positions = notes.iter().map(|(_, data)| *data).collect::<Vec<u32>>();
-        // self.write(&*format!("{:?}", shown_string), delay);
         self.write(&shown_string, delay);
     }
 }

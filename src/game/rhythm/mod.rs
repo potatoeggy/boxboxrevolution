@@ -1,9 +1,8 @@
-use alloc::vec::{self, Vec};
+use alloc::vec::Vec;
 use fugit::Rate;
 
 const DISPLAY_LENGTH: u32 = 16;
 const MAX_NOTES_ON_SCREEN: usize = 3; // prevent OOM
-const NOTE_SPEED_MULTIPLIER: u32 = 100; // period of the note moving across display
 type Note = (Option<Rate<u32, 1, 1>>, u32);
 
 pub struct Song {
@@ -42,10 +41,10 @@ impl RhythmGame {
     pub fn new(mut song: Song) -> Self {
         let max_ticks = build_note_psa(&mut song.notes);
         RhythmGame {
-            song: song,
+            song,
             current_tick: 0,
             score: 0,
-            max_ticks: max_ticks,
+            max_ticks,
         }
     }
 
@@ -57,7 +56,7 @@ impl RhythmGame {
         let mut note_positions = vec![];
         for (freq, duration) in self.song.notes.iter() {
             let note_position = *duration as i32 - self.current_tick as i32;
-            if note_position >= 0 as i32 {
+            if note_position >= 0_i32 {
                 note_positions.push((*freq, note_position as u32));
             }
 

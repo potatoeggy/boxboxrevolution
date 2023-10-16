@@ -4,7 +4,6 @@
 extern crate alloc;
 
 use alloc::format;
-use alloc::string::ToString;
 use alloc_cortex_m::CortexMHeap;
 use bbr::{
     self as _,
@@ -12,7 +11,7 @@ use bbr::{
     lcd_helper::LCD,
     songs::get_tune,
 };
-use cortex_m::peripheral::SYST;
+
 use embedded_hal::digital::v2::OutputPin;
 // use bbr::ultrasonic;
 use core::ops::{Div, Mul};
@@ -20,10 +19,10 @@ use core::ops::{Div, Mul};
 use hd44780_driver::{Cursor, CursorBlink, Display, DisplayMode, HD44780};
 use keypad2::Keypad;
 use stm32f4xx_hal::{
-    gpio::{Edge, Input, Output, Pin, Pull, PushPull},
-    pac::{self, TIM1, TIM2},
+    gpio::{Input, Pin},
+    pac,
     prelude::*,
-    timer::{Channel, Delay, SysDelay, Timer},
+    timer::{Channel, SysDelay},
 };
 
 const ULTRASONIC_VALID_THRESHOLD: f64 = 30.0;
@@ -81,9 +80,9 @@ fn read_ultrasonic<T: OutputPin>(
     sensor: &mut UltrasonicSensor<T>,
     delay: &mut SysDelay,
 ) -> Option<f64> {
-    sensor.trigger.set_high();
+    let _ = sensor.trigger.set_high();
     delay.delay_us(10u16);
-    sensor.trigger.set_low();
+    let _ = sensor.trigger.set_low();
 
     let mut counter = 0;
 
@@ -125,18 +124,6 @@ fn main() -> ! {
     let gpioa = dp.GPIOA.split();
     let gpioc = dp.GPIOC.split();
 
-    // let rows = (
-    //     gpioa.pa2.into_pull_up_input(),
-    //     gpiob.pb10.into_pull_up_input(),
-    //     gpiob.pb4.into_pull_up_input(),
-    //     gpiob.pb3.into_pull_up_input(),
-    // );
-    // let cols = (
-    //     gpioa.pa10.into_open_drain_output(),
-    //     gpioa.pa3.into_open_drain_output(),
-    //     gpiob.pb5.into_open_drain_output(),
-    // );
-
     let mut red_led = gpioa.pa0.into_push_pull_output();
     let mut green_led = gpioa.pa1.into_push_pull_output();
 
@@ -151,6 +138,7 @@ fn main() -> ! {
         gpioa.pa3.into_open_drain_output(),
         gpiob.pb5.into_open_drain_output(),
     );
+    let mut _keypad = Keypad::new(rows, cols);
 
     let rs = gpioc.pc7.into_push_pull_output();
     let en = gpiob.pb6.into_push_pull_output();
@@ -162,7 +150,6 @@ fn main() -> ! {
     // pa13 nukes the board
     // pa15 dies halfway through
 
-    let mut keypad = Keypad::new(rows, cols);
     let mut lcd = HD44780::new_4bit(rs, en, d4, d5, d6, d7, &mut delay).unwrap();
     lcd.reset(&mut delay).unwrap();
     lcd.clear(&mut delay).unwrap();
@@ -181,9 +168,6 @@ fn main() -> ! {
 
     let mut lcd_driver = LCD::new(lcd, &mut delay);
 
-    let mut led = gpioa.pa5.into_push_pull_output();
-    let mut echo = gpioc.pc6.into_pull_down_input();
-
     let mut ultrasonic = UltrasonicSensor {
         trigger: gpiob.pb9.into_push_pull_output(),
         echo: gpiob.pb8.into_floating_input(),
@@ -201,8 +185,8 @@ fn main() -> ! {
     let song = Song::new(tempo, get_tune());
     let mut game = RhythmGame::new(song);
 
-    let TICK_RATE = 120;
-    let tick_pause: u32 = 1_000_000 / TICK_RATE - 200;
+    let tick_rate = 120;
+    let tick_pause: u32 = 1_000_000 / tick_rate - 200;
     let mut current_tick: u32 = 0;
 
     let mut sleep_until = 0;
@@ -240,9 +224,9 @@ fn main() -> ! {
             if game.current_tick >= game.max_ticks as usize {
                 // game over
                 buzz_pwm.disable(Channel::C2);
-                lcd_driver.driver.clear(&mut delay);
+                lcd_driver.driver.clear(&mut delay).unwrap();
                 lcd_driver.write("Game over!", &mut delay);
-                lcd_driver.driver.set_cursor_pos(40, &mut delay);
+                lcd_driver.driver.set_cursor_pos(40, &mut delay).unwrap();
                 lcd_driver.write(
                     &*format!("Score: {}/{}", game.score, game.song.notes.len()),
                     &mut delay,
@@ -260,69 +244,10 @@ fn main() -> ! {
                     points_available = true;
                 } else {
                     buzz_pwm.disable(Channel::C2);
-                    // delay.delay_ms(duration * TICK_RATE / tempo);
                 }
-
-                // buzz_pwm.disable(Channel::C2);
             }
-
-            // lcd.clear(&mut delay);
-            // lcd.write_str(&*format!("{:?}", distance), &mut delay)
-            //     .unwrap();
         }
-        // for (freq, duration) in song.iter() {
-        //     lcd.clear(&mut delay).unwrap();
-        //     if let Some(freq) = freq {
-        //         lcd.write_str(&*format!("{:?}", freq.raw()), &mut delay)
-        //             .unwrap();
-        //         buzz_pwm.set_period(*freq);
-        //         green_led.set_high();
-        //         buzz_pwm.enable(Channel::C2);
-        //         delay.delay_ms(duration * tempo);
-        //     } else {
-        //         red_led.set_high();
-        //         buzz_pwm.disable(Channel::C2);
-        //         delay.delay_ms(duration * tempo);
-        //     }
-        //     green_led.set_low();
-        //     red_led.set_low();
-
-        //     buzz_pwm.disable(Channel::C2);
-        //     // 4.2 Keep the output off for half a beat between notes
-        //     delay.delay_ms(tempo);
-        // }
         current_tick += 1;
         delay.delay_us(tick_pause);
     }
-
-    // loop {
-    //     let key = keypad.read_char(&mut delay);
-    //     let distance = read_ultrasonic(&mut ultrasonic, &mut delay);
-    //     lcd.clear(&mut delay);
-    //     lcd.write_str(&*format!("{:?}", distance), &mut delay)
-    //         .unwrap();
-    //     // if let Some(val) = distance {
-    //     //     // defmt::info!("New value: {}", val);
-    //     //     lcd.write_str(&*val.to_string(), &mut delay).unwrap();
-    //     //     delay.delay_ms(1000u16);
-    //     // }
-    //     // lcd.clear(&mut delay);
-    //     // lcd.write_str(&*format!("{:?}", distance), &mut delay).unwrap();
-    //     if key != ' ' {
-    //         // lcd.write_str(key.encode_utf8(&mut buffer), &mut delay).unwrap();
-
-    //         if is_green_on && counter == 9 {
-    //             green_led.set_low();
-    //             red_led.set_high();
-    //             is_green_on = false;
-    //         } else if counter == 9 {
-    //             green_led.set_high();
-    //             red_led.set_low();
-    //             is_green_on = true;
-    //         }
-    //     }
-    //     delay.delay_ms(10u16);
-    //     counter += 1;
-    //     counter = counter % 10;
-    // }
 }
