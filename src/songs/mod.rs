@@ -36,6 +36,7 @@ pub fn tone_string_to_hz(tone: &str) -> Option<Rate<u32, 1, 1>> {
 
 pub fn get_tune() -> Vec<(Option<Rate<u32, 1, 1>>, u32)> {
     let megalovania = [
+        (" ", 8),
         ("d", 1),
         ("d", 1),
         ("d2", 2),
@@ -114,9 +115,10 @@ pub fn get_tune() -> Vec<(Option<Rate<u32, 1, 1>>, u32)> {
         ("d", 1),
         ("f", 1),
         ("g", 1),
-        (" ", 10000),
+        // (" ", 10000),
     ];
     let mario = [
+        (" ", 8),
         ("e", 2),
         ("e", 2),
         (" ", 2),
@@ -150,7 +152,7 @@ pub fn get_tune() -> Vec<(Option<Rate<u32, 1, 1>>, u32)> {
         ("c", 2),
         ("d", 2),
         ("b0", 4),
-        (" ", 10000),
+        // (" ", 10000),
     ];
 
     let tune = mario;

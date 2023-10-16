@@ -26,6 +26,8 @@ use stm32f4xx_hal::{
     timer::{Channel, Delay, SysDelay, Timer},
 };
 
+const ULTRASONIC_VALID_THRESHOLD: f64 = 30.0;
+
 #[global_allocator]
 static ALLOCATOR: CortexMHeap = CortexMHeap::empty();
 
@@ -194,27 +196,75 @@ fn main() -> ! {
     let max_duty = buzz_pwm.get_max_duty();
     red_led.set_high();
     buzz_pwm.set_duty(Channel::C2, max_duty / 2);
-    green_led.set_high();
 
-    red_led.set_high();
-
-    let song = Song::new(45, get_tune());
-    let mut game = RhythmGame::new(&song);
-
-    let tempo: u32 = 60;
+    let tempo = 2;
+    let song = Song::new(tempo, get_tune());
+    let mut game = RhythmGame::new(song);
 
     let TICK_RATE = 120;
-    let tick_pause: u32 = 1_000_000 / TICK_RATE - 100;
-    let mut current_tick = 0;
+    let tick_pause: u32 = 1_000_000 / TICK_RATE - 200;
+    let mut current_tick: u32 = 0;
 
+    let mut sleep_until = 0;
+    let mut points_available = false;
     loop {
-        if current_tick % game.tick_period() == 0 {
-            game.poll();
+        if current_tick % game.tick_period() == 2 {
+            green_led.set_low();
+            red_led.set_low();
+        }
+        if sleep_until != 0 && current_tick >= sleep_until {
+            buzz_pwm.disable(Channel::C2);
+            sleep_until = 0;
+            points_available = false;
         }
 
-        if current_tick == 1 {
+        if current_tick % 3 == 0 && points_available {
             let distance = read_ultrasonic(&mut ultrasonic, &mut delay);
+            if let Some(distance) = distance {
+                if distance < ULTRASONIC_VALID_THRESHOLD {
+                    green_led.set_high();
+                    red_led.set_low();
+                    game.score += 1;
+                    points_available = false;
+                } else {
+                    green_led.set_low();
+                    red_led.set_high();
+                }
+            } else {
+                red_led.set_high();
+            }
+        }
+
+        if current_tick % game.tick_period() == 0 {
+            game.poll();
+            if game.current_tick >= game.max_ticks as usize {
+                // game over
+                buzz_pwm.disable(Channel::C2);
+                lcd_driver.driver.clear(&mut delay);
+                lcd_driver.write("Game over!", &mut delay);
+                lcd_driver.driver.set_cursor_pos(40, &mut delay);
+                lcd_driver.write(
+                    &*format!("Score: {}/{}", game.score, game.song.notes.len()),
+                    &mut delay,
+                );
+                panic!("Game over!");
+            }
+
             lcd_driver.print_rhythm_game(&game, tick_pause, &mut delay);
+
+            if let Some((freq, duration)) = game.get_current_note() {
+                if let Some(freq) = freq {
+                    buzz_pwm.set_period(freq);
+                    buzz_pwm.enable(Channel::C2);
+                    sleep_until = current_tick + duration * tempo;
+                    points_available = true;
+                } else {
+                    buzz_pwm.disable(Channel::C2);
+                    // delay.delay_ms(duration * TICK_RATE / tempo);
+                }
+
+                // buzz_pwm.disable(Channel::C2);
+            }
 
             // lcd.clear(&mut delay);
             // lcd.write_str(&*format!("{:?}", distance), &mut delay)
@@ -241,7 +291,7 @@ fn main() -> ! {
         //     // 4.2 Keep the output off for half a beat between notes
         //     delay.delay_ms(tempo);
         // }
-        current_tick = (current_tick + 1) % TICK_RATE;
+        current_tick += 1;
         delay.delay_us(tick_pause);
     }
 

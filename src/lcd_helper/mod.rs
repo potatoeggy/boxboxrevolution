@@ -1,4 +1,4 @@
-use alloc::string::String;
+use alloc::{string::String, vec::Vec};
 use core::ops::{Div, Mul};
 use hd44780_driver::{
     bus::{DataBus, FourBitBus},
@@ -27,7 +27,7 @@ pub struct LCD {
 }
 
 const DISPLAY_LENGTH: u32 = 16;
-const NOTE_CHARACTER: char = '🞂';
+const NOTE_CHARACTER: char = '|';
 
 impl LCD {
     pub fn new(mut display: GenericDisplay, delay: &mut SysDelay) -> Self {
@@ -55,25 +55,37 @@ impl LCD {
         delay: &mut SysDelay,
     ) {
         // we want the upcoming n notes that are on the screen
-        let mut shown_notes = [' '; 16];
         let notes = rhythm.get_note_positions();
 
-        for (_, ticks_left) in notes.iter() {
-            let position_before_boom = u32::div(
-                u32::mul(
-                    u32::mul(*ticks_left, rhythm.tick_period()),
-                    game_tick_period,
-                )
-                .into(),
-                100,
-            );
+        let mut shown_notes = [' '; DISPLAY_LENGTH as usize];
 
-            if position_before_boom < DISPLAY_LENGTH.into() {
-                shown_notes[position_before_boom as usize] = NOTE_CHARACTER;
+        for (note, ticks_left) in notes.iter() {
+            if ticks_left >= &DISPLAY_LENGTH {
+                break;
+            }
+            if note.is_some() {
+                shown_notes[*ticks_left as usize] = NOTE_CHARACTER;
             }
         }
+
+        // for (_, ticks_left) in notes.iter() {
+        //     let position_before_boom = u32::div(
+        //         u32::mul(
+        //             u32::mul(*ticks_left, rhythm.tick_period()),
+        //             game_tick_period,
+        //         )
+        //         .into(),
+        //         100,
+        //     );
+
+        //     if position_before_boom < DISPLAY_LENGTH.into() {
+        //         shown_notes[position_before_boom as usize] = NOTE_CHARACTER;
+        //     }
+        // }
         let shown_string: String = shown_notes.iter().collect();
         self.driver.clear(delay).unwrap();
+        // let positions = notes.iter().map(|(_, data)| *data).collect::<Vec<u32>>();
+        // self.write(&*format!("{:?}", shown_string), delay);
         self.write(&shown_string, delay);
     }
 }
