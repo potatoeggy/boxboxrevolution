@@ -3,7 +3,7 @@
 
 extern crate alloc;
 
-use alloc::format;
+use alloc::string::ToString;
 use alloc_cortex_m::CortexMHeap;
 use bbr as _;
 use core::ops::{Div, Mul};
@@ -72,6 +72,7 @@ fn read_ultrasonic(sensor: &mut UltrasonicSensor, delay: &mut GenericDelay) -> O
     sensor.trigger.set_low();
 
     let mut counter = 0;
+    return Some(0.0);
     // defmt::info!("Distance: {}", counter);
     while !sensor.echo.is_high() {
         delay.delay_us(1u16);
@@ -172,7 +173,7 @@ fn main() -> ! {
         let distance = read_ultrasonic(&mut ultrasonic, &mut delay);
         if let Some(val) = distance {
             // defmt::info!("New value: {}", val);
-            lcd.write_char('1', &mut delay).unwrap();
+            lcd.write_str(&*val.to_string(), &mut delay).unwrap();
             delay.delay_ms(1000u16);
         }
         lcd.clear(&mut delay);
