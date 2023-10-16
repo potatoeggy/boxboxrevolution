@@ -23,6 +23,7 @@ embedded-hal = "0.2"
 alloc-cortex-m = "0.4.4"
 keypad2 = "0.1.1"
 hd44780-driver = "0.4.0"
+fugit = "0.3.7"
 
 [dependencies.stm32f4xx-hal]
 version = "0.17.1"

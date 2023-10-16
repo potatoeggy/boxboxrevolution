@@ -6,16 +6,18 @@ extern crate alloc;
 use alloc::string::ToString;
 use alloc_cortex_m::CortexMHeap;
 use bbr as _;
+use fugit::{Duration, Instant};
+// use bbr::ultrasonic;
 use core::ops::{Div, Mul};
 // global logger + panicking-behavior + memory layout
 use hd44780_driver::{Cursor, CursorBlink, Display, DisplayMode, HD44780};
 use keypad2::Keypad;
 use stm32f4xx_hal::{
-    dwt::Instant,
-    gpio::{Input, Output, Pin, Pull, PushPull},
+    adc::config::TriggerMode,
+    gpio::{Edge, Input, Output, Pin, Pull, PushPull},
     pac::{self, TIM1},
     prelude::*,
-    timer::Delay,
+    timer::{Delay, Timer},
 };
 
 #[global_allocator]
@@ -72,22 +74,22 @@ fn read_ultrasonic(sensor: &mut UltrasonicSensor, delay: &mut GenericDelay) -> O
     sensor.trigger.set_low();
 
     let mut counter = 0;
-    return Some(0.0);
     // defmt::info!("Distance: {}", counter);
-    while !sensor.echo.is_high() {
-        delay.delay_us(1u16);
+    while sensor.echo.is_low() {
         counter += 1;
+        delay.delay_us(1u32);
         if counter > 100000 {
-            return None;
+            // it means that we are not getting a response
+            return Some(-1.0);
         }
     }
 
     let mut counter = 0;
-    while !sensor.echo.is_low() {
-        delay.delay_us(1u16);
+    while sensor.echo.is_high() {
         counter += 1;
+        delay.delay_us(1u32);
         if counter > 100000 {
-            return None;
+            return Some(-2.0);
         }
     }
     let result: f64 = f64::mul(counter.into(), f64::div(f64::mul(1_000_000.0, 331.8), 2.0));
@@ -97,6 +99,7 @@ fn read_ultrasonic(sensor: &mut UltrasonicSensor, delay: &mut GenericDelay) -> O
 #[cortex_m_rt::entry]
 fn main() -> ! {
     init_allocator();
+    let mut cp = cortex_m::Peripherals::take().unwrap();
     let dp = pac::Peripherals::take().unwrap();
     let rcc = dp.RCC.constrain();
     let clocks = rcc.cfgr.freeze();
@@ -104,6 +107,8 @@ fn main() -> ! {
     let gpiob = dp.GPIOB.split();
     let gpioa = dp.GPIOA.split();
     let gpioc = dp.GPIOC.split();
+
+    let counter = Timer::syst(cp.SYST, &clocks).counter_us();
 
     // let rows = (
     //     gpioa.pa2.into_pull_up_input(),
@@ -157,16 +162,18 @@ fn main() -> ! {
     lcd.write_str("Num2", &mut delay).unwrap();
 
     let mut led = gpioa.pa5.into_push_pull_output();
+    let mut echo = gpioc.pc6.into_pull_down_input();
 
     let mut ultrasonic = UltrasonicSensor {
         trigger: gpioc.pc5.into_push_pull_output(),
-        echo: gpioc.pc6.into_pull_up_input(),
+        echo: echo,
     };
 
     let mut buffer = [0; 4];
     defmt::info!("Connected to target!");
 
     let mut is_green_on = false;
+    red_led.set_high();
     let mut counter = 0;
     loop {
         let key = keypad.read_char(&mut delay);
